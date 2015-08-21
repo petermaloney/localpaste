@@ -17,7 +17,7 @@ Install
 ```
  git clone https://github.com/petermaloney/localpaste
  cd  localpaste/
- ```
+```
 
 *Usage:*
 ```
@@ -36,7 +36,8 @@ cat <YOUR FILE> | curl -F 'clbin=<-' http://example.com
 ```
 Create an alias
  **replace example.com with your Hostname/IP**
-``
+```
+
 echo -e "alias lpaste=\"curl -F 'clbin=<-' http://example.com\"" >> ~/.bashrc
 ```
 
