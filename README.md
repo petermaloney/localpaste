@@ -43,7 +43,7 @@ Install
 Create an alias replace example.com with your Hostname/IP
 
 ```
-echo -e 'alias lpaste="curl -F 'clbin=<-' "' >> ~/.bashrc
+echo -e 'alias lpaste="curl -F 'clbin=<-' http://localhost/"' >> ~/.bashrc
 ```
  
  *Using your alias:*
