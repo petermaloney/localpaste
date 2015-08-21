@@ -21,21 +21,23 @@ Install
 
 *Usage:*
 
- To run it: ../localpaste.py -f --debug --hostname 127.0.0.1
+ To run it: ../localpaste.py -f --debug
  
  To send input:   echo -n "hello" | curl -F 'clbin=<-' http://127.0.0.1/
  
  To get pastes:   curl http://127.0.0.1/XXXX
 
 ```
-./localpaste.py -f --debug --hostname example.com
+./localpaste.py -f --debug --port 1025
 ```
-or 
+or (for ports 1-1024)
 ```
-sudo ./localpaste.py -f --debug --hostname example.com
+sudo ./localpaste.py -f --debug
 ```
 
 *Upload/Paste a file*
+
+(--hostname example.com = http://example.com)
 
 ```
 cat <YOUR FILE> | curl -F 'clbin=<-' http://example.com
