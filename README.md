@@ -59,7 +59,7 @@ Install
 Create an alias replace *localhost* with your Hostname/External IP
 
 ```
-echo -e 'alias lpaste="curl -F 'clbin=<-' http://localhost/"' >> ~/.bashrc
+echo "alias lpaste=\"curl -F 'clbin=<-' http://localhost/"\" >> ~/.bashrc
 ```
  
  *Using your alias:*
@@ -75,7 +75,7 @@ http://localhost/XXXX
 openssl req -new -x509 -keyout server.pem -out server.pem -days 365 -nodes
 ```
 
-The private key and cert must reside in the same folder as localpaste.py and be named **server.pem** or you'll have to use the **--certfile** option to specify it's location. (e.g. --certfile /etc/myserver.pem)
+The private key and cert must reside in the same folder as localpaste.py and be combined together in one file named **server.pem**. If your file has another name, you'll have to use the **--certfile** option to specify it's location. (e.g. --certfile /etc/myserver.pem)
 
 ```
 sudo nohup ./localpaste.py --scheme https -f --user localpaste &
