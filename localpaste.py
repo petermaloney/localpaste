@@ -34,6 +34,9 @@ import os
 import http.server
 import re
 
+# more imports are below, based on usage of command line arguments, for modules:
+#    ssl
+
 debug = 0
 
 # http://stackoverflow.com/questions/24575121/in-python-how-to-print-full-iso-8601-timestamp-including-current-timezone
@@ -65,6 +68,10 @@ def log(message):
 def logwarn(message):
     timestamp = get_timestamp_str()
     print("WARNING: %s: %s" % (timestamp, message))
+    
+def logerror(message):
+    timestamp = get_timestamp_str()
+    print("ERROR: %s: %s" % (timestamp, message))
     
 def logdebug(args):
     if debug != 1:
@@ -101,14 +108,17 @@ parser.add_argument('--no-create-datadir', action='store_const', const=True,
                    help='prevent automatically creating a data dir if one does not exist')
 
 parser.add_argument('--port', "-p", action='store',
-                   type=int, default=80,
-                   help='port to listen on (default=80)')
+                   type=int, default=None,
+                   help='port to listen on')
 parser.add_argument('--scheme', "-s", action='store',
                    type=str, default="http", choices=["http", "https"],
                    help='scheme to use (default=http)')
 parser.add_argument('--hostname', action='store',
                    type=str, required=True,
                    help='hostname to send to clients in the url so they can retrieve their paste')
+parser.add_argument('--certfile', action='store',
+                   type=str, default="server.pem",
+                   help='file containing both the SSL certificate and key for https (default=server.pem)')
 
 args = parser.parse_args()
 debug = args.debug
@@ -120,12 +130,8 @@ logdebug("name-min-size = %s" % args.name_min_size)
 logdebug("port          = %s" % args.port)
 logdebug("scheme        = %s" % args.scheme)
 logdebug("hostname      = %s" % args.hostname)
+logdebug("certfile      = %s" % args.certfile)
 logdebug("argv          = %s" % sys.argv)
-
-if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
-    hostname_and_port = "%s:%s" % (args.hostname, args.port)
-else:
-    hostname_and_port = "%s" % (args.hostname)
 
 if not args.no_create_datadir and not os.path.isdir(args.datadir):
     os.mkdir(args.datadir)
@@ -137,9 +143,23 @@ if not args.hostname:
     print("ERROR: hostname is required")
     exit(1)
 
+if args.port == None:
+    args.port = 443
+        
 if args.scheme == "https":
     import ssl
-    httpd.socket = ssl.wrap_socket (httpd.socket, certfile='./server.pem', server_side=True)
+    if not os.path.isfile(args.certfile):
+        logerror("certfile \"%s\" was not found" % args.certfile)
+        logerror("to generate a simple self-signed file, use:")
+        logerror("    openssl req -new -x509 -keyout server.pem -out server.pem -days 365 -nodes")
+        exit(1)
+    if args.port == None:
+        args.port = 443
+
+if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
+    hostname_and_port = "%s:%s" % (args.hostname, args.port)
+else:
+    hostname_and_port = "%s" % (args.hostname)
 
 ############################################
 
@@ -288,8 +308,19 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         logdebug("LocalPasteHandler.setup() called")
         super(LocalPasteHandler, self).setup()
 
-class LocalPasteServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    pass
+class LocalPasteServer(http.server.HTTPServer, socketserver.ThreadingMixIn):
+    def __init__(self, server_address, RequestHandlerClass):
+        # no idea why this syntax doesn't work
+        #super(LocalPasteServer, self).__init__(self, server_address, RequestHandlerClass)
+        # this one works
+        http.server.HTTPServer.__init__(self, server_address, RequestHandlerClass)
+        
+        if args.scheme == "https":
+            # This expects certfile= to contain both the private key and cert, generated like this:
+            #    openssl req -new -x509 -keyout server.pem -out server.pem -days 365 -nodes
+            # or you can probably just combine them yourself:
+            #    cat server.key server.crt > server.pem
+            self.socket = ssl.wrap_socket(self.socket, certfile=args.certfile, server_side=True)
 
 def run_server():
     host = "0.0.0.0"
