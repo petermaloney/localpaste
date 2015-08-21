@@ -320,6 +320,9 @@ class LocalPasteServer(http.server.HTTPServer, socketserver.ThreadingMixIn):
             #    openssl req -new -x509 -keyout server.pem -out server.pem -days 365 -nodes
             # or you can probably just combine them yourself:
             #    cat server.key server.crt > server.pem
+            # This was based on reading:
+            #    https://gist.github.com/dergachev/7028596
+            #    http://code.activestate.com/recipes/442473-simple-http-server-supporting-ssl-secure-communica/
             self.socket = ssl.wrap_socket(self.socket, certfile=args.certfile, server_side=True)
 
 def run_server():
@@ -341,5 +344,3 @@ elif args.daemon:
     print("daemon mode not implemented... use nohup and foreground instead")
 else:
     print("ERROR: Unknown mode; use one of the --daemon or --foreground options")
-
-print("TEST at end of file")
