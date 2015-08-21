@@ -104,7 +104,7 @@ parser.add_argument('--port', "-p", action='store',
                    type=int, default=80,
                    help='port to listen on (default=80)')
 parser.add_argument('--scheme', "-s", action='store',
-                   type=str, default="http", choices=["http", "https"]
+                   type=str, default="http", choices=["http", "https"],
                    help='scheme to use (default=http)')
 parser.add_argument('--hostname', action='store',
                    type=str, required=True,
