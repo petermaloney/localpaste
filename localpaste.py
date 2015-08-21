@@ -34,26 +34,7 @@ import os
 import http.server
 import re
 
-############################################
-# Config
-############################################
-
-# For sending URLs to clients, set these
-scheme = "http"
-server = "localhost"
-port = 6542
-
-# minimum number of chars in the name that goes in the url and filename
-name_min_size = 4
-
-work_dir = "localpaste_data"
-
-############################################
-
 debug = 0
-
-if not ( scheme == "http" and port == 80 ) or not ( scheme == "https" and port == 443 ):
-    server_and_port = "%s:%s" % (server, port)
 
 # http://stackoverflow.com/questions/24575121/in-python-how-to-print-full-iso-8601-timestamp-including-current-timezone
 def get_timestamp_str():
@@ -104,6 +85,23 @@ group.add_argument('--stdin', '-c', action='store_const', const=True,
 parser.add_argument('--debug', action='store_const', const=True,
                    help='run in debug mode')
 
+parser.add_argument('--datadir', action='store',
+                   type=str, default="localpaste_data",
+                   help='dir to store data files (default=localpaste_data)')
+parser.add_argument('--name-min-size', action='store',
+                   type=int, default=4,
+                   help='minimum number of chars in the name that goes in the url and filename (default=4)')
+
+parser.add_argument('--hostname', action='store',
+                   type=str,
+                   help='hostname to send to clients in the url so they can retrieve their paste')
+parser.add_argument('--port', "-p", action='store',
+                   type=int, default=80,
+                   help='port to listen on (default=80)')
+parser.add_argument('--scheme', "-s", action='store',
+                   type=str, default="http",
+                   help='scheme (currently only http supported) to use (default=http)')
+
 args = parser.parse_args()
 debug = args.debug
 logdebug("debug      = %s" % args.debug)
@@ -111,6 +109,11 @@ logdebug("foreground = %s" % args.foreground)
 logdebug("daemon     = %s" % args.daemon)
 logdebug("stdin      = %s" % args.stdin)
 logdebug("argv       = %s" % sys.argv)
+
+if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
+    hostname_and_port = "%s:%s" % (args.hostname, args.port)
+else:
+    hostname_and_port = "%s" % (args.hostname)
 
 def read_data(file):
     data = b""
@@ -148,7 +151,7 @@ def read_data(file):
 
 def read_file(filename):
     data = b""
-    with open(os.path.join(work_dir, filename), 'rb') as f:
+    with open(os.path.join(args.datadir, filename), 'rb') as f:
         line = f.read()
         data += line
     return data
@@ -174,7 +177,7 @@ def generate_name():
     
     # then shrink it to the smallest unique value, minimum 4 length
     ret = None
-    for l in range(name_min_size, len(base64str)):
+    for l in range(args.name_min_size, len(base64str)):
         check = base64str[0:l]
         if not os.path.isfile(check):
             ret = check
@@ -184,7 +187,7 @@ def generate_name():
 
 def save_file(name, data):
     # save the file
-    with open(os.path.join(work_dir, name), 'wb') as f:
+    with open(os.path.join(args.datadir, name), 'wb') as f:
         f.write(bytes(data))
 
 class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
@@ -214,7 +217,7 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         
         # prepend a url
-        message = "%s://%s/%s\r\n" % (scheme, server_and_port, name)
+        message = "%s://%s/%s\r\n" % (args.scheme, hostname_and_port, name)
         self.wfile.write(message.encode("utf-8"))
 
     # For showing the pasted data
@@ -249,7 +252,7 @@ def run_server():
     socketserver.ThreadingMixIn.allow_reuse_address = True
 
     try:
-        server = LocalPasteServer((host, port), LocalPasteHandler)
+        server = LocalPasteServer((host, args.port), LocalPasteHandler)
         log("Starting server... hit ctrl+c to exit")
         server.serve_forever()
     except KeyboardInterrupt as e:
