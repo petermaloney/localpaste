@@ -10,9 +10,25 @@ Requirement: Python3
  apt-get install -y python3
 ```
 *Fedora/CentOS/RedHat:*
+compile from source
+
 ```
- yum -y install python33 
+ yum install openssl-devel bzip2-devel expat-devel gdbm-devel readline-devel sqlite-devel
+ 
+ wget https://www.python.org/ftp/python/3.4.3/Python-3.4.3.tar.xz
+ 
+ tar xf Python-3.* 
+
+ cd Python-3.*
+ 
+ ./configure
+ 
+ make
+ 
+ sudo make install
+ 
 ```
+
 Install
 ```
  git clone https://github.com/petermaloney/localpaste
@@ -40,7 +56,7 @@ Install
  curl http://localhost/XXXX
 ```
 
-Create an alias replace example.com with your Hostname/IP
+Create an alias replace *localhost* with your Hostname/External IP
 
 ```
 echo -e 'alias lpaste="curl -F 'clbin=<-' http://localhost/"' >> ~/.bashrc
@@ -53,15 +69,26 @@ cat <YOUR FILE>| lpaste
 http://localhost/XXXX
 ```
 
+*Creating and using a self-signed SSL Certificate*
 
 ```
+openssl req -new -x509 -keyout server.pem -out server.pem -days 365 -nodes
+```
 
-  ./localpaste.py -h
+The private key and cert must reside in the same folder as localpaste.py and be named **server.pem** or you'll have to use the **--certfile** option to specify it's location. (e.g. --certfile /etc/myserver.pem)
 
-usage: localpaste.py [-h] [--foreground | --daemon] [--debug]
+```
+sudo nohup ./localpaste.py --scheme https -f --user localpaste &
+```
+
+#  ./localpaste.py  -h
+
+```
+  usage: localpaste.py [-h] [--foreground | --daemon] [--debug]
                      [--datadir DATADIR] [--name-min-size NAME_MIN_SIZE]
-                     [--no-create-datadir] [--port PORT]
-                     [--scheme {http,https}] --hostname HOSTNAME
+                     [--no-create-datadir] [--user USER] [--port PORT]
+                     [--scheme {http,https}] [--hostname HOSTNAME]
+                     [--certfile CERTFILE] [--listen-address LISTEN_ADDRESS]
 
 A daemon to record input in some temporary files.
 
@@ -76,6 +103,8 @@ optional arguments:
                         url and filename (default=4)
   --no-create-datadir   prevent automatically creating a data dir if one does
                         not exist
+  --user USER           run as root first and then the server will switch to
+                        this user after listening to the port
   --port PORT, -p PORT  port to listen on
   --scheme {http,https}, -s {http,https}
                         scheme to use (default=http)
