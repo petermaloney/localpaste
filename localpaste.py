@@ -71,11 +71,11 @@ def log(message):
     
 def logwarn(message):
     timestamp = get_timestamp_str()
-    print("WARNING: %s: %s" % (timestamp, message))
+    print("%s: WARNING: %s" % (timestamp, message))
     
 def logerror(message):
     timestamp = get_timestamp_str()
-    print("ERROR: %s: %s" % (timestamp, message))
+    print("%s: ERROR: %s" % (timestamp, message))
     
 def logdebug(args):
     if debug != 1:
@@ -110,6 +110,9 @@ parser.add_argument('--name-min-size', action='store',
                    help='minimum number of chars in the name that goes in the url and filename (default=4)')
 parser.add_argument('--no-create-datadir', action='store_const', const=True,
                    help='prevent automatically creating a data dir if one does not exist')
+parser.add_argument('--user', action='store',
+                   type=str,
+                   help='run as root first and then the server will switch to this user after listening to the port')
 
 parser.add_argument('--port', "-p", action='store',
                    type=int, default=None,
@@ -134,6 +137,7 @@ logdebug("foreground    = %s" % args.foreground)
 logdebug("daemon        = %s" % args.daemon)
 logdebug("datadir       = %s" % args.datadir)
 logdebug("name-min-size = %s" % args.name_min_size)
+logdebug("user          = %s" % args.user)
 logdebug("port          = %s" % args.port)
 logdebug("scheme        = %s" % args.scheme)
 logdebug("hostname      = %s" % args.hostname)
@@ -148,7 +152,7 @@ elif args.no_create_datadir and not os.path.isdir(args.datadir):
     exit(1)
 
 if args.port == None:
-    args.port = 443
+    args.port = 80
         
 if args.scheme == "https":
     import ssl
@@ -169,6 +173,36 @@ if args.hostname:
 
 ############################################
 
+# Based on:
+# http://stackoverflow.com/questions/2699907/dropping-root-permissions-in-python
+# But this version takes only a username, and figures out the group by taking the user's primary group
+def drop_privileges(uid_name='localpaste'):
+    import os, pwd, grp
+    if os.getuid() != 0:
+        # We're not root so, like, whatever dude
+        logerror("You cannot drop privileges if you are not root")
+
+        # this isn't really true... if you have CAP_SETUID and CAP_SETGID, you still can, and then you need to drop caps instead
+        # TODO: support caps, and allow non-root to use this function
+        
+        exit(1)
+
+    # Get the uid/gid from the name
+    target_user = pwd.getpwnam(uid_name)
+    
+    target_uid = target_user.pw_uid
+    target_gid = target_user.pw_gid
+
+    # Remove group privileges
+    os.setgroups([])
+
+    # Try setting the new uid/gid
+    os.setgid(target_gid)
+    os.setuid(target_uid)
+
+    # Ensure a very conservative umask
+    old_umask = os.umask(0o077)
+    
 def read_data(file):
     data = b""
 
@@ -345,6 +379,8 @@ def run_server():
     try:
         server = LocalPasteServer((args.listen_address, args.port), LocalPasteHandler)
         log("Starting server... hit ctrl+c to exit")
+        if args.user:
+            drop_privileges(args.user)
         server.serve_forever()
     except KeyboardInterrupt as e:
         log("Stopping server...")
