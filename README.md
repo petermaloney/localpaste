@@ -43,18 +43,7 @@ sudo ./localpaste.py -f --debug
 cat <YOUR FILE> | curl -F 'clbin=<-' http://example.com
 
 ```
-Create an alias
- **replace example.com with your Hostname/IP**
-```
 
-echo -e 'alias lpaste="curl -F 'clbin=<-' http://example.com"' >> ~/.bashrc
-```
-
-```
-cat <YOUR FILE>| lpaste
-
-  http://example.com/TEST
-```
 
 ```
 
