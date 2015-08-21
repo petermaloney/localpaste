@@ -20,6 +20,10 @@ Install
 ```
 
 *Usage:*
+To run it: ../localpaste.py -f --debug
+# To send input:   echo -n "hello" | curl -F 'clbin=<-' http://localhost:6542
+# To get pastes:   curl http://localhost:6542/XXXX
+
 ```
 ./localpaste.py -f --debug --hostname example.com
 ```
@@ -38,7 +42,7 @@ Create an alias
  **replace example.com with your Hostname/IP**
 ```
 
-echo -e "alias lpaste=\"curl -F 'clbin=<-' http://example.com\"" >> ~/.bashrc
+echo -e 'alias lpaste="curl -F 'clbin=<-' http://example.com"' >> ~/.bashrc
 ```
 
 ```
