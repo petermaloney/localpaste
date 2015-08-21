@@ -6,6 +6,10 @@
 # To send input:   echo -n "hello" | curl -F 'clbin=<-' http://localhost:6542
 # To get pastes:   curl http://localhost:6542/XXXX
 #
+# What it does not do:
+#    - clean up old files (a simple cronjob can do this: find localpaste_data -type f -mtime +30 -delete)
+#    - remove files on request (would need to log some authentication info for that... ip address, cookie, etc., or output a 2nd url with special privs)
+#
 # Copyright 2015 Peter Maloney
 #
 # License: Version 2 of the GNU GPL or any later version
@@ -114,11 +118,14 @@ parser.add_argument('--scheme', "-s", action='store',
                    type=str, default="http", choices=["http", "https"],
                    help='scheme to use (default=http)')
 parser.add_argument('--hostname', action='store',
-                   type=str, required=True,
-                   help='hostname to send to clients in the url so they can retrieve their paste')
+                   type=str, default=None,
+                   help='hostname to send to clients in the url so they can retrieve their paste (default=use host and port from http request)')
 parser.add_argument('--certfile', action='store',
                    type=str, default="server.pem",
                    help='file containing both the SSL certificate and key for https (default=server.pem)')
+parser.add_argument('--listen-address', action='store',
+                   type=str, default="0.0.0.0",
+                   help='listen address (default=0.0.0.0)')
 
 args = parser.parse_args()
 debug = args.debug
@@ -131,16 +138,13 @@ logdebug("port          = %s" % args.port)
 logdebug("scheme        = %s" % args.scheme)
 logdebug("hostname      = %s" % args.hostname)
 logdebug("certfile      = %s" % args.certfile)
+logdebug("listen-address= %s" % args.listen_address)
 logdebug("argv          = %s" % sys.argv)
 
 if not args.no_create_datadir and not os.path.isdir(args.datadir):
     os.mkdir(args.datadir)
 elif args.no_create_datadir and not os.path.isdir(args.datadir):
     print("ERROR: datadir \"%s\" does not exist" % args.datadir)
-    exit(1)
-
-if not args.hostname:
-    print("ERROR: hostname is required")
     exit(1)
 
 if args.port == None:
@@ -156,10 +160,12 @@ if args.scheme == "https":
     if args.port == None:
         args.port = 443
 
-if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
-    hostname_and_port = "%s:%s" % (args.hostname, args.port)
-else:
-    hostname_and_port = "%s" % (args.hostname)
+hostname_and_port = None
+if args.hostname:
+    if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
+        hostname_and_port = "%s:%s" % (args.hostname, args.port)
+    else:
+        hostname_and_port = "%s" % (args.hostname)
 
 ############################################
 
@@ -250,6 +256,10 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         
     # For handling input
     def do_POST(self):
+        client_supplied_hostname_and_port = None
+        if "Host" in self.headers:
+            client_supplied_hostname_and_port = self.headers["Host"]
+        
         logdebug("LocalPasteHandler.handle() called")
         log("client %s - connected" % str(self.client_address))
         logdebug("client %s - calling read_report" % str(self.client_address))
@@ -275,7 +285,11 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         
         # prepend a url
-        message = "%s://%s/%s\r\n" % (args.scheme, hostname_and_port, name)
+        if not hostname_and_port is None:
+            use_hostname_and_port = hostname_and_port
+        else:
+            use_hostname_and_port = client_supplied_hostname_and_port
+        message = "%s://%s/%s\r\n" % (args.scheme, use_hostname_and_port, name)
         self.wfile.write(message.encode("utf-8"))
 
     # For showing the pasted data
@@ -326,11 +340,10 @@ class LocalPasteServer(http.server.HTTPServer, socketserver.ThreadingMixIn):
             self.socket = ssl.wrap_socket(self.socket, certfile=args.certfile, server_side=True)
 
 def run_server():
-    host = "0.0.0.0"
     socketserver.ThreadingMixIn.allow_reuse_address = True
 
     try:
-        server = LocalPasteServer((host, args.port), LocalPasteHandler)
+        server = LocalPasteServer((args.listen_address, args.port), LocalPasteHandler)
         log("Starting server... hit ctrl+c to exit")
         server.serve_forever()
     except KeyboardInterrupt as e:
