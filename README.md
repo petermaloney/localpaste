@@ -20,9 +20,9 @@ Install
 ```
 
 *Usage:*
-To run it: ../localpaste.py -f --debug
-# To send input:   echo -n "hello" | curl -F 'clbin=<-' http://localhost:6542
-# To get pastes:   curl http://localhost:6542/XXXX
+ To run it: ../localpaste.py -f --debug
+ To send input:   echo -n "hello" | curl -F 'clbin=<-' http://localhost:6542
+ To get pastes:   curl http://localhost:6542/XXXX
 
 ```
 ./localpaste.py -f --debug --hostname example.com
