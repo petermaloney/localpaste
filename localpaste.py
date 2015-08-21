@@ -80,8 +80,6 @@ group.add_argument('--foreground', '-f', action='store_const', const=True,
                    help='run in foreground mode')
 group.add_argument('--daemon', '-d',  action='store_const', const=True,
                    help='run in daemon mode')
-group.add_argument('--stdin', '-c', action='store_const', const=True,
-                   help='run in foreground stdin (test) mode')
 parser.add_argument('--debug', action='store_const', const=True,
                    help='run in debug mode')
 
@@ -91,6 +89,8 @@ parser.add_argument('--datadir', action='store',
 parser.add_argument('--name-min-size', action='store',
                    type=int, default=4,
                    help='minimum number of chars in the name that goes in the url and filename (default=4)')
+parser.add_argument('--no-create-datadir', action='store_const', const=True,
+                   help='prevent automatically creating a data dir if one does not exist')
 
 parser.add_argument('--hostname', action='store',
                    type=str,
@@ -107,13 +107,18 @@ debug = args.debug
 logdebug("debug      = %s" % args.debug)
 logdebug("foreground = %s" % args.foreground)
 logdebug("daemon     = %s" % args.daemon)
-logdebug("stdin      = %s" % args.stdin)
 logdebug("argv       = %s" % sys.argv)
 
 if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
     hostname_and_port = "%s:%s" % (args.hostname, args.port)
 else:
     hostname_and_port = "%s" % (args.hostname)
+
+if not args.no_create_datadir and not os.path.isdir(args.datadir):
+    os.mkdir(args.datadir)
+elif args.no_create_datadir and not os.path.isdir(args.datadir):
+    print("ERROR: datadir \"%s\" does not exist" % args.datadir)
+    exit(1)
 
 def read_data(file):
     data = b""
@@ -260,17 +265,11 @@ def run_server():
         server.shutdown()
         raise
     
-if args.stdin:
-    report = read_report(sys.stdin)
-    logdebug(report)
-    db = dbconnect()
-    try:
-        insert_report(db, report)
-    finally:
-        db.close()
-elif args.foreground:
+if args.foreground:
     run_server()
 elif args.daemon:
     print("daemon mode not implemented... use nohup and foreground instead")
 else:
-    print("ERROR: Unknown mode")
+    print("ERROR: Unknown mode; use one of the --daemon or --foreground options")
+
+print("TEST at end of file")
