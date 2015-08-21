@@ -19,29 +19,38 @@ Install
  cd  localpaste/
 ```
 
+```
+  useradd localpaste
+```
+
 *Usage:*
 
- To run it: ../localpaste.py -f --debug
+ To run it:
+ ```
+ sudo nohup ./localpaste.py -f --user localpaste &
+ ```
  
- To send input:   echo -n "hello" | curl -F 'clbin=<-' http://127.0.0.1/
+ To send input: 
+ ```
+ echo -n "hello" | curl -F 'clbin=<-' http://localhost/
+ ```
  
- To get pastes:   curl http://127.0.0.1/XXXX
-
+ To get pastes:
 ```
-./localpaste.py -f --debug --port 1025
-```
-or (for ports 1-1024)
-```
-sudo ./localpaste.py -f --debug
+ curl http://localhost/XXXX
 ```
 
-*Upload/Paste a file*
-
-(--hostname example.com = http://example.com)
+Create an alias replace example.com with your Hostname/IP
 
 ```
-cat <YOUR FILE> | curl -F 'clbin=<-' http://example.com
-
+echo -e 'alias lpaste="curl -F 'clbin=<-' "' >> ~/.bashrc
+```
+ 
+ *Using your alias:*
+ ````
+cat <YOUR FILE>| lpaste
+ 
+http://localhost/XXXX
 ```
 
 
