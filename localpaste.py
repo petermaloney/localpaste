@@ -62,6 +62,10 @@ def log(message):
     timestamp = get_timestamp_str()
     print("%s: %s" % (timestamp, message))
     
+def logwarn(message):
+    timestamp = get_timestamp_str()
+    print("WARNING: %s: %s" % (timestamp, message))
+    
 def logdebug(args):
     if debug != 1:
         return
@@ -73,6 +77,10 @@ def logdebug(args):
     for item in args:
         for line in str(item).splitlines():
             log("DEBUG: %s" % line)
+
+############################################
+# CLI handling
+############################################
 
 parser = argparse.ArgumentParser(description='A daemon to record input in some temporary files.')
 group = parser.add_mutually_exclusive_group()
@@ -92,22 +100,27 @@ parser.add_argument('--name-min-size', action='store',
 parser.add_argument('--no-create-datadir', action='store_const', const=True,
                    help='prevent automatically creating a data dir if one does not exist')
 
-parser.add_argument('--hostname', action='store',
-                   type=str,
-                   help='hostname to send to clients in the url so they can retrieve their paste')
 parser.add_argument('--port', "-p", action='store',
                    type=int, default=80,
                    help='port to listen on (default=80)')
 parser.add_argument('--scheme', "-s", action='store',
-                   type=str, default="http",
-                   help='scheme (currently only http supported) to use (default=http)')
+                   type=str, default="http", choices=["http", "https"]
+                   help='scheme to use (default=http)')
+parser.add_argument('--hostname', action='store',
+                   type=str, required=True,
+                   help='hostname to send to clients in the url so they can retrieve their paste')
 
 args = parser.parse_args()
 debug = args.debug
-logdebug("debug      = %s" % args.debug)
-logdebug("foreground = %s" % args.foreground)
-logdebug("daemon     = %s" % args.daemon)
-logdebug("argv       = %s" % sys.argv)
+logdebug("debug         = %s" % args.debug)
+logdebug("foreground    = %s" % args.foreground)
+logdebug("daemon        = %s" % args.daemon)
+logdebug("datadir       = %s" % args.datadir)
+logdebug("name-min-size = %s" % args.name_min_size)
+logdebug("port          = %s" % args.port)
+logdebug("scheme        = %s" % args.scheme)
+logdebug("hostname      = %s" % args.hostname)
+logdebug("argv          = %s" % sys.argv)
 
 if not ( args.scheme == "http" and args.port == 80 ) or not ( args.scheme == "https" and args.port == 443 ):
     hostname_and_port = "%s:%s" % (args.hostname, args.port)
@@ -120,6 +133,16 @@ elif args.no_create_datadir and not os.path.isdir(args.datadir):
     print("ERROR: datadir \"%s\" does not exist" % args.datadir)
     exit(1)
 
+if not args.hostname:
+    print("ERROR: hostname is required")
+    exit(1)
+
+if args.scheme == "https":
+    import ssl
+    httpd.socket = ssl.wrap_socket (httpd.socket, certfile='./server.pem', server_side=True)
+
+############################################
+
 def read_data(file):
     data = b""
 
@@ -129,7 +152,12 @@ def read_data(file):
     ignore_next = False
     logdebug("reading data...")
     for line in file:
-        line_str = line.decode("utf-8").splitlines()[0]
+        try:
+            line_str = line.decode("utf-8").splitlines()[0]
+        except:
+            logwarn("failed to decode utf-8 for str = %s... falling back to latin1" % line)
+            line_str = line.decode("latin1").splitlines()[0]
+        
         logdebug("read a line: \"%s\"" % line)
         
         if ignore_next:
@@ -208,6 +236,11 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         
         data = read_data(self.rfile)
         print("input was %s long" % len(data))
+
+        if( len(data) == 0 ):
+            self.send_response(400)
+            self.end_headers()
+            return
         
         # pick a name
         name = generate_name()
@@ -241,6 +274,12 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         
         data = read_file(path)
         logdebug("accepting request: client = %s, path = %s, len(data) = %s" % (self.client_address, self.path, len(data)))
+        
+        if( len(data) == 0 ):
+            self.send_response(400)
+            self.end_headers()
+            return
+        
         self.send_response(200)
         self.end_headers()
         self.wfile.write(data)
