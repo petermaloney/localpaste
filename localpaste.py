@@ -111,6 +111,9 @@ parser.add_argument('--datadir', action='store',
 parser.add_argument('--name-min-size', action='store',
                    type=int, default=4,
                    help='minimum number of chars in the name that goes in the url and filename (default=4)')
+parser.add_argument('--data-max-size', action='store',
+                   type=int, default=10*1024*1024,
+                   help='maximum size in bytes for input data (default=10MiB)')
 parser.add_argument('--no-create-datadir', action='store_const', const=True,
                    help='prevent automatically creating a data dir if one does not exist')
 parser.add_argument('--user', action='store',
@@ -140,6 +143,7 @@ logdebug("foreground    = %s" % args.foreground)
 logdebug("daemon        = %s" % args.daemon)
 logdebug("datadir       = %s" % args.datadir)
 logdebug("name-min-size = %s" % args.name_min_size)
+logdebug("data-max-size = %s" % args.data_max_size)
 logdebug("user          = %s" % args.user)
 logdebug("port          = %s" % args.port)
 logdebug("scheme        = %s" % args.scheme)
@@ -180,6 +184,10 @@ if args.hostname:
 # For supporting binary files... not sure if there's any disadvantage.
 data_encoding = "latin1"
 
+if not args.foreground and not args.daemon:
+    logwarn("using default mode, which is currently foreground, but may change in the future")
+    args.foreground = True
+    
 ############################################
 
 # Based on:
@@ -212,11 +220,12 @@ def drop_privileges(uid_name='localpaste'):
 
     # Ensure a very conservative umask
     old_umask = os.umask(0o077)
-    
+
+# just for dumping big strings in debug output, in case they are too large, shorten them    
 def shorten_str(text, length=60):
-#    if len(text) > 100:
-#        return "%s ... %s" % (text[0:int(length/2)], text[len(text)-int(length/2):])
-#    else:
+    if len(text) > length:
+        return "%s ... %s" % (text[0:int(length/2)], text[len(text)-int(length/2):])
+    else:
         return text
     
 def read_data(file, length):
@@ -330,12 +339,22 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         log("client %s - connected" % str(self.client_address))
         logdebug("client %s - calling read_report" % str(self.client_address))
         
-        data = read_data(self.rfile, int(self.headers["Content-Length"]))
+        content_length = int(self.headers["Content-Length"])
+        if content_length > args.data_max_size:
+            self.send_response(400)
+            self.end_headers()
+            message = "Maximum content-length is %s, but recieved %s" % (args.data_max_size, content_length)
+            self.wfile.write(message.encode(data_encoding))
+            return
+        
+        data = read_data(self.rfile, content_length)
         logdebug("input was %s long" % len(data))
 
         if( len(data) == 0 ):
             self.send_response(400)
             self.end_headers()
+            message = "empty data"
+            self.wfile.write(message.encode(data_encoding))
             return
         
         # pick a name
@@ -370,6 +389,8 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
             logdebug("rejecting request: client = %s, path = %s" % (self.client_address, self.path))
             self.send_response(400)
             self.end_headers()
+            message = "invalid file name"
+            self.wfile.write(message.encode(data_encoding))
             return
         
         data = read_file(path)
@@ -378,6 +399,8 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         if( len(data) == 0 ):
             self.send_response(400)
             self.end_headers()
+            message = "empty data"
+            self.wfile.write(message.encode(data_encoding))
             return
         
         self.send_response(200)
