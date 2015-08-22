@@ -37,9 +37,12 @@ import base64
 import os
 import http.server
 import re
+import socket
 
 # more imports are below, based on usage of command line arguments, for modules:
 #    ssl
+#    pwd
+#    grp
 
 debug = 0
 
@@ -171,11 +174,18 @@ if args.hostname:
     else:
         hostname_and_port = "%s" % (args.hostname)
 
+# For a text-only pastebin... but not sure if there's any advantage
+#data_encoding = "utf-8"
+
+# For supporting binary files... not sure if there's any disadvantage.
+data_encoding = "latin1"
+
 ############################################
 
 # Based on:
 # http://stackoverflow.com/questions/2699907/dropping-root-permissions-in-python
 # But this version takes only a username, and figures out the group by taking the user's primary group
+# This is most likely unix only
 def drop_privileges(uid_name='localpaste'):
     import os, pwd, grp
     if os.getuid() != 0:
@@ -203,50 +213,72 @@ def drop_privileges(uid_name='localpaste'):
     # Ensure a very conservative umask
     old_umask = os.umask(0o077)
     
-def read_data(file):
-    data = b""
-
+def shorten_str(text, length=60):
+#    if len(text) > 100:
+#        return "%s ... %s" % (text[0:int(length/2)], text[len(text)-int(length/2):])
+#    else:
+        return text
+    
+def read_data(file, length):
+    # TODO: if possible, turn it into a stream into the file instead of a big string all in memory at once (a filter rather than slurping)
+    
+    read_total = 0
     ending = None
     oldline = None
-    found_data = False
     ignore_next = False
     logdebug("reading data...")
-    for line in file:
+    
+    # first look for the marker and Content-Disposition
+    # skip the useless \r\n
+    while True:
+        line = file.readline()
+        read_total += len(line)
+        logdebug("read a line: \"%s\"" % (shorten_str(line)))
+    
+        if not line:
+            break
+        
         try:
-            line_str = line.decode("utf-8").splitlines()[0]
+            line_str = line.decode(data_encoding).splitlines()[0]
         except:
-            logwarn("failed to decode utf-8 for str = %s... falling back to latin1" % line)
+            logwarn("failed to decode %s for str = %s... falling back to latin1" % (data_encoding, shorten_str(line)))
             line_str = line.decode("latin1").splitlines()[0]
         
-        logdebug("read a line: \"%s\"" % line)
-        
-        if ignore_next:
-            ignore_next = False
-        elif "Content-Disposition:" in line_str:
-            found_data = True
+        if "Content-Disposition:" in line_str:
             ending = oldline
-            logdebug("found Content-Disposition; ending = %s" % ending)
+            logdebug("found Content-Disposition; ending = \"%s\"" % ending)
             # next line is just "\r\n"... totally useless, so just remove it, since it's not real data
-            ignore_next = True
-        elif ending and ending in line_str:
-            # don't read the rest... just finish
+            line = file.readline()
+            read_total += len(line)
             break
-        elif found_data:
-            data += line
         else:
             oldline = line_str
             
+    # then read data until the end, including the end marker and the useless \r\n at the end
+    logdebug("read()")
+    data = file.read(length - read_total)
+    
+    end_str = data[len(data)-len(ending)-4:].decode(data_encoding).splitlines()[0]
+
+    if ending and ending in end_str:
+        logdebug("end found")
+        
+    # remove the ending, plus the \r\n that is part of it, plus the \r\n on the next line, and the last \r\n inside the data
+    data = data[0 : len(data)-len(ending)-6]
+
     logdebug("done reading data...")
-    if len(data) >= 2 and data[len(data)-2:] == b"\r\n":
-        # there is a useless extra "\r\n" at the end... so just remove it, since it's not real data
-        data = data[0:len(data)-2]
+
     return data
 
 def read_file(filename):
     data = b""
     with open(os.path.join(args.datadir, filename), 'rb') as f:
-        line = f.read()
-        data += line
+        while True:
+            chunk = f.read()
+            if chunk:
+                data += chunk
+            else:
+                break
     return data
 
 # generate a short unique name
@@ -262,7 +294,7 @@ def generate_name():
     
     # then base64 it
     base64bytes = base64.b64encode(hashbytes)
-    base64str = base64bytes.decode("utf-8")
+    base64str = base64bytes.decode(data_encoding)
     
     # then remove slashes and dots
     base64str = base64str.replace("/", "")
@@ -298,8 +330,8 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         log("client %s - connected" % str(self.client_address))
         logdebug("client %s - calling read_report" % str(self.client_address))
         
-        data = read_data(self.rfile)
-        print("input was %s long" % len(data))
+        data = read_data(self.rfile, int(self.headers["Content-Length"]))
+        logdebug("input was %s long" % len(data))
 
         if( len(data) == 0 ):
             self.send_response(400)
@@ -324,7 +356,7 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         else:
             use_hostname_and_port = client_supplied_hostname_and_port
         message = "%s://%s/%s\r\n" % (args.scheme, use_hostname_and_port, name)
-        self.wfile.write(message.encode("utf-8"))
+        self.wfile.write(message.encode(data_encoding))
 
     # For showing the pasted data
     def do_GET(self):
@@ -350,7 +382,12 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(data)
+        
+        total = 0
+        while total < len(data):
+            # for some reason, it only writes 2539008 bytes at a time, so just keep trying that amount until done
+            l = self.wfile.write(data[total:total+2539008])
+            total += l
     
     def setup(self):
         logdebug("LocalPasteHandler.setup() called")
@@ -373,6 +410,13 @@ class LocalPasteServer(http.server.HTTPServer, socketserver.ThreadingMixIn):
             #    http://code.activestate.com/recipes/442473-simple-http-server-supporting-ssl-secure-communica/
             self.socket = ssl.wrap_socket(self.socket, certfile=args.certfile, server_side=True)
 
+    # adding a timeout like in http://stackoverflow.com/questions/10003866/http-server-hangs-while-accepting-packets
+    def finish_request(self, request, client_address):
+        # timeout should only happen if content-length header is wrong
+        request.settimeout(30)
+        # "super" can not be used because BaseServer is not created from object
+        http.server.HTTPServer.finish_request(self, request, client_address)
+        
 def run_server():
     socketserver.ThreadingMixIn.allow_reuse_address = True
 
