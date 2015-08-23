@@ -14,9 +14,14 @@ compile from source
 
 ```
  yum install openssl-devel bzip2-devel expat-devel gdbm-devel readline-devel sqlite-devel
- 
+
+ # download and verify 
  wget https://www.python.org/ftp/python/3.4.3/Python-3.4.3.tar.xz
- 
+ wget https://www.python.org/ftp/python/3.4.3/Python-3.4.3.tar.xz.asc
+ gpg --recv-keys '97FC 712E 4C02 4BBE A48A  61ED 3A5C A953 F73C 700D'
+ gpg --verify Python-3.4.3.tar.xz.asc || mv Python-3.4.3.tar.xz Python-3.4.3.tar.xz.corrupt
+
+ # extract and install the simple bad way (prefer to use rpmbuild instead)
  tar xf Python-3.* 
 
  cd Python-3.*
