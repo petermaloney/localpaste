@@ -111,6 +111,9 @@ parser.add_argument('--datadir', action='store',
 parser.add_argument('--name-min-size', action='store',
                    type=int, default=4,
                    help='minimum number of chars in the name that goes in the url and filename (default=4)')
+parser.add_argument('--name-max-size', action='store',
+                   type=int, default=20,
+                   help='maximum number of chars in the name that goes in the url and filename (default=20; do not use a number larger than 20)')
 parser.add_argument('--data-max-size', action='store',
                    type=int, default=10*1024*1024,
                    help='maximum size in bytes for input data (default=10MiB)')
@@ -143,6 +146,7 @@ logdebug("foreground    = %s" % args.foreground)
 logdebug("daemon        = %s" % args.daemon)
 logdebug("datadir       = %s" % args.datadir)
 logdebug("name-min-size = %s" % args.name_min_size)
+logdebug("name-max-size = %s" % args.name_max_size)
 logdebug("data-max-size = %s" % args.data_max_size)
 logdebug("user          = %s" % args.user)
 logdebug("port          = %s" % args.port)
@@ -188,6 +192,10 @@ if not args.foreground and not args.daemon:
     logwarn("using default mode, which is currently foreground, but may change in the future")
     args.foreground = True
     
+if args.name_max_size < 20:
+    logerror("name_max_size cannot be larger than 20")
+    exit(1)
+        
 ############################################
 
 # Based on:
@@ -294,34 +302,42 @@ def read_file(filename):
 def generate_name():
     # start with high precision timestamp
     timestamp_str = str(time.time())
+    #timestamp_str = "test value"
     ts_bytes = str.encode(timestamp_str)
     
-    # then hash it with sha1 (bytes, not hex str)
     h = hashlib.sha1()
     h.update(ts_bytes)
-    hashbytes = h.digest()
-    
-    # then base64 it
-    base64bytes = base64.b64encode(hashbytes)
-    base64str = base64bytes.decode(data_encoding)
-    
-    # then remove slashes and dots
-    base64str = base64str.replace("/", "")
-    base64str = base64str.replace(".", "")
-    
-    # then shrink it to the smallest unique value, minimum 4 length
-    ret = None
-    for l in range(args.name_min_size, len(base64str)):
-        check = base64str[0:l]
-        if not os.path.isfile(check):
-            ret = check
-            break
-    
-    return ret
+    for l in range(args.name_min_size, args.name_max_size):
+        # try larger and larger sizes to get smallest unique value
+        for n in range(1, 100):
+            # then hash it with sha1 (bytes, not hex str)
+            # here we add n to the end, so first it was time1, then time12, then time123, ... time123...9899100 being hashed
+            h.update(str.encode("%s" % n))
+            hashbytes = h.digest()
+            
+            # then base64 it
+            base64bytes = base64.b64encode(hashbytes)
+            base64str = base64bytes.decode(data_encoding)
+            
+            # then remove slashes and dots
+            base64str = base64str.replace("/", "")
+            base64str = base64str.replace(".", "")
+            
+            # then shrink it to the target size
+            check = base64str[0:l]
+            if not os.path.isfile(os.path.join(args.datadir, check)):
+                return check
+        
+    return None
 
 def save_file(name, data):
+    path=os.path.join(args.datadir, name)
+    
+    if os.path.isfile(path):
+        logerror("the file \"%s\" already exists... failed to save paste" % path)
+        
     # save the file
-    with open(os.path.join(args.datadir, name), 'wb') as f:
+    with open(path, 'wb') as f:
         f.write(bytes(data))
 
 class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
