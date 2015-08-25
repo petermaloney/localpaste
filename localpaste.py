@@ -235,8 +235,13 @@ def shorten_str(text, length=60):
         return "%s ... %s" % (text[0:int(length/2)], text[len(text)-int(length/2):])
     else:
         return text
-    
-def read_data(file, length):
+
+class UnsupportedContentTypeException(Exception):
+    def __init__(self, message):
+        super(Exception, self).__init__(message)
+        self.message = message
+
+def read_data(file, length, content_type):
     # TODO: if possible, turn it into a stream into the file instead of a big string all in memory at once (a filter rather than slurping)
     
     read_total = 0
@@ -245,43 +250,51 @@ def read_data(file, length):
     ignore_next = False
     logdebug("reading data...")
     
-    # first look for the marker and Content-Disposition
-    # skip the useless \r\n
-    while True:
-        line = file.readline()
-        read_total += len(line)
-        logdebug("read a line: \"%s\"" % (shorten_str(line)))
-    
-        if not line:
-            break
-        
-        try:
-            line_str = line.decode(data_encoding).splitlines()[0]
-        except:
-            logwarn("failed to decode %s for str = %s... falling back to latin1" % (data_encoding, shorten_str(line)))
-            line_str = line.decode("latin1").splitlines()[0]
-        
-        if "Content-Disposition:" in line_str:
-            ending = oldline
-            logdebug("found Content-Disposition; ending = \"%s\"" % ending)
-            # next line is just "\r\n"... totally useless, so just remove it, since it's not real data
+    if "multipart/form-data" in content_type:
+        # first look for the marker and Content-Disposition
+        # skip the useless \r\n
+        while True:
             line = file.readline()
             read_total += len(line)
-            break
-        else:
-            oldline = line_str
-            
-    # then read data until the end, including the end marker and the useless \r\n at the end
-    logdebug("read()")
-    data = file.read(length - read_total)
-    
-    end_str = data[len(data)-len(ending)-4:].decode(data_encoding).splitlines()[0]
-
-    if ending and ending in end_str:
-        logdebug("end found")
+            logdebug("read a line: \"%s\"" % (shorten_str(line)))
         
-    # remove the ending, plus the \r\n that is part of it, plus the \r\n on the next line, and the last \r\n inside the data
-    data = data[0 : len(data)-len(ending)-6]
+            if not line:
+                break
+            
+            try:
+                line_str = line.decode(data_encoding).splitlines()[0]
+            except:
+                logwarn("failed to decode %s for str = %s... falling back to latin1" % (data_encoding, shorten_str(line)))
+                line_str = line.decode("latin1").splitlines()[0]
+            
+            if "Content-Disposition:" in line_str:
+                ending = oldline
+                logdebug("found Content-Disposition; ending = \"%s\"" % ending)
+                # next line is just "\r\n"... totally useless, so just remove it, since it's not real data
+                line = file.readline()
+                read_total += len(line)
+                break
+            else:
+                oldline = line_str
+                
+        # then read data until the end, including the end marker and the useless \r\n at the end
+        logdebug("read()")
+        data = file.read(length - read_total)
+        
+        end_str = data[len(data)-len(ending)-4:].decode(data_encoding).splitlines()[0]
+
+        if ending and ending in end_str:
+            logdebug("end found")
+            
+        # remove the ending, plus the \r\n that is part of it, plus the \r\n on the next line, and the last \r\n inside the data
+        data = data[0 : len(data)-len(ending)-6]
+    elif content_type == "application/x-www-form-urlencoded":
+        data = file.read(length)
+        data_str = data.decode(data_encoding)
+        data_str = data_str[data_str.find("=")+1:]
+        data = data_str.encode(data_encoding)
+    else:
+        raise UnsupportedContentTypeException("Unsupported Content-Type: \"%s\"" % content_type)
 
     logdebug("done reading data...")
 
@@ -363,7 +376,17 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(message.encode(data_encoding))
             return
         
-        data = read_data(self.rfile, content_length)
+        content_type = self.headers["Content-Type"]
+        try:
+            data = read_data(self.rfile, content_length, content_type)
+        except UnsupportedContentTypeException as e:
+            # no printing to log here; already done in read_data
+            self.send_response(500)
+            self.end_headers()
+            print(dir(e))
+            message = e.message
+            self.wfile.write(message.encode(data_encoding))
+            
         logdebug("input was %s long" % len(data))
 
         if( len(data) == 0 ):
@@ -393,30 +416,69 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
         message = "%s://%s/%s\r\n" % (args.scheme, use_hostname_and_port, name)
         self.wfile.write(message.encode(data_encoding))
 
+    def write_paste_form(self):
+        self.send_response(200)
+        message = """<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+            <html>
+            <head>
+                <title>LocalPaste CLI and web pastebin</title>
+                <style>
+                    .container {
+                        margin: auto;
+                        width: 70%;
+                        height: 90%;
+                    }
+                    .textarea {
+                        width: 100%;
+                        height: 100%;
+                    }
+                    .alignright {
+                        float: right;
+                    }
+                </style>
+            </head>
+            <body>
+                <form method='post'>
+                    <div class='container'>
+                        <textarea class='textarea' name='data'></textarea> <br/>
+                        <input class='alignright' type='submit' value='Paste'/>
+                    </div>
+                </form>
+            </body>
+            </html>"""
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(message)))
+        self.end_headers()
+        self.wfile.write(message.encode(data_encoding))
+    
+    def write_simple_error(code, message):
+        self.send_response(400)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(message)))
+        self.end_headers()
+        self.wfile.write(message.encode(data_encoding))
+        
     # For showing the pasted data
     def do_GET(self):
         path = self.path[1:]
         
-        # TODO: for blank input, show help and a paste form
+        if len(path) == 0:
+            # for blank path, show help and a paste form
+            self.write_paste_form()
+            return
         
         path_regex = re.compile("^[a-zA-Z0-9+=]+$")
         m = path_regex.match(path)
         if not m:
             logdebug("rejecting request: client = %s, path = %s" % (self.client_address, self.path))
-            self.send_response(400)
-            self.end_headers()
-            message = "invalid file name"
-            self.wfile.write(message.encode(data_encoding))
+            self.write_simple_error(400, "invalid file name")
             return
         
         data = read_file(path)
         logdebug("accepting request: client = %s, path = %s, len(data) = %s" % (self.client_address, self.path, len(data)))
         
         if( len(data) == 0 ):
-            self.send_response(400)
-            self.end_headers()
-            message = "empty data"
-            self.wfile.write(message.encode(data_encoding))
+            self.write_simple_error(400, "empty data")
             return
         
         self.send_response(200)
