@@ -418,16 +418,17 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
 
     def write_paste_form(self):
         self.send_response(200)
-        message = """<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-                "http://www.w3.org/TR/html4/strict.dtd">
+        message = """<!doctype html>
             <html>
             <head>
                 <title>LocalPaste CLI and web pastebin</title>
-                <style>
+                <style type='text/css'>
                     .container {
                         margin: auto;
                         width: 70%;
                         height: 90%;
+                        min-width: 500px;
+                        max-width: 1000px;
                     }
                     .textarea {
                         width: 100%;
@@ -439,10 +440,10 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
                 </style>
             </head>
             <body>
-                <form method='post'>
+                <form method='post' action="?">
                     <div class='container'>
-                        <textarea class='textarea' name='data'></textarea> <br/>
-                        <input class='alignright' type='submit' value='Paste'/>
+                        <textarea class='textarea' name='data' rows='15' cols='50' ></textarea> <br />
+                        <input class='alignright' type='submit' value='Paste' />
                     </div>
                 </form>
             </body>
