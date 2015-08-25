@@ -419,6 +419,7 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
     def write_paste_form(self):
         self.send_response(200)
         message = """<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+                "http://www.w3.org/TR/html4/strict.dtd">
             <html>
             <head>
                 <title>LocalPaste CLI and web pastebin</title>
@@ -446,14 +447,14 @@ class LocalPasteHandler(http.server.BaseHTTPRequestHandler):
                 </form>
             </body>
             </html>"""
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(message)))
         self.end_headers()
         self.wfile.write(message.encode(data_encoding))
     
     def write_simple_error(code, message):
         self.send_response(400)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(message)))
         self.end_headers()
         self.wfile.write(message.encode(data_encoding))
