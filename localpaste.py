@@ -38,6 +38,7 @@ import os
 import http.server
 import re
 import socket
+from urllib.parse import parse_qs
 
 # more imports are below, based on usage of command line arguments, for modules:
 #    ssl
@@ -291,8 +292,7 @@ def read_data(file, length, content_type):
     elif content_type == "application/x-www-form-urlencoded":
         data = file.read(length)
         data_str = data.decode(data_encoding)
-        data_str = data_str[data_str.find("=")+1:]
-        data = data_str.encode(data_encoding)
+        data = parse_qs(data_str)["data"][0].encode(data_encoding)
     else:
         raise UnsupportedContentTypeException("Unsupported Content-Type: \"%s\"" % content_type)
 
